@@ -4,7 +4,7 @@ WORKDIR $GOPATH/src/tail-based-sampling
 COPY . $GOPATH/src/tail-based-sampling
 
 RUN mkdir -p $GOPATH/src/golang.org/x/ \
-     && mv ./time/ $GOPATH/src/golang.org/x/ \
+     && mv ./src/time/ $GOPATH/src/golang.org/x/ \
      && cd $GOPATH/src/golang.org/x/ \
      && go install time \
      && cd - \
