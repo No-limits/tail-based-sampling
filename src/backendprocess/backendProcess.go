@@ -189,7 +189,7 @@ func sendMd5Result() bool {
 		log.Fatalln(err)
 	}
 
-	log.Println(result)
+	log.Printf("%s\n", result)
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		//log.Println("suc to sendCheckSum, result:" + util.Bytes2str(result))
