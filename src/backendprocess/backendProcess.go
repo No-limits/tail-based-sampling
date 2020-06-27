@@ -3,6 +3,7 @@ package backendprocess
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	mapset "github.com/deckarep/golang-set"
 	md5simd "github.com/minio/md5-simd"
 	"go.uber.org/atomic"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"tail-based-sampling/src/util"
 	"time"
 )
@@ -195,7 +197,26 @@ func sendMd5Result() bool {
 	}
 
 	log.Println("fail to sendCheckSum:" + resp.Status)
+
+	//将结果发送至oss中
+	putFileToOss(result)
+
 	return false
+}
+
+func putFileToOss(result []byte) {
+	client, _ := oss.New("http://oss-cn-beijing.aliyuncs.com",
+		"LTAIT5g1A8CEJaot",
+		"ZRrpnRjjfKV7ApgCtiWdltJz2Hgg8x")
+	bucket, _ := client.Bucket("hyw-bucket")
+
+	// 字符串上传下载
+	fileName := fmt.Sprintf("md5result%d.txt", time.Now().Unix())
+	err := bucket.PutObject(fileName, strings.NewReader(util.Bytes2str(result)))
+	// 上面的err都需要处理，此处略
+	if err != nil {
+		// TODO
+	}
 }
 
 func getWrongTrace(traceIdSet mapset.Set, batchPos int, clientPort string) util.TraceMap {
