@@ -3,7 +3,12 @@ FROM golang:latest
 WORKDIR $GOPATH/src/tail-based-sampling
 COPY . $GOPATH/src/tail-based-sampling
 
-RUN go get -u -v ./src/...
+RUN mkdir -p $GOPATH/src/golang.org/x/ \
+     && mv ./time/ $GOPATH/src/golang.org/x/ \
+     && cd $GOPATH/src/golang.org/x/ \
+     && go install time \
+     && cd - \
+     && go get -u -v ./src/...
 
 #RUN go build -o tail-based-sampling ./src
 #RUN chmod +x ./tail-based-sampling
