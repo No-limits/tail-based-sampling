@@ -2,9 +2,9 @@
 
 if [ $SERVER_PORT ];
 then
-   ./tail-based-sampling -port $SERVER_PORT
+   go run ./src/multiEntry.go -port $SERVER_PORT
 else
-   ./tail-based-sampling -port 8000
+   go run ./src/multiEntry.go -port 8000
 fi
 tail -f start.sh
 
