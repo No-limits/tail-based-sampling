@@ -6,5 +6,5 @@ then
 else
    go run ./src/multiEntry.go -port 8000
 fi
-#tail -f start.sh
+tail -f start.sh
 
