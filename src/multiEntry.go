@@ -39,9 +39,10 @@ func setParameter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	util.KSamplingPort = port
-	if len(util.KTraceDataPort) == 0 {
-		util.KTraceDataPort = port
-	}
+
+	//本地测试时需要注释掉
+	util.KTraceDataPort = port
+
 	//log.Println("KSamplingPort: ", util.KSamplingPort)
 	//log.Println("KTraceDataPort: ", util.KTraceDataPort)
 
