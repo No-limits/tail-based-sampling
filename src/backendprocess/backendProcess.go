@@ -97,9 +97,6 @@ func Process() {
 
 		//--------------------------------------------------------------
 		wg.Add(1)
-		if traceIdBatch.TraceIdSet.Cardinality() <= 0 {
-			continue
-		}
 
 		go func(traceIdBatch TraceIdBatch) {
 

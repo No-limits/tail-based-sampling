@@ -3,11 +3,11 @@ package main
 import (
 	"flag"
 	//"fmt"
+	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
 	"os"
-
 	//_ "net/http/pprof"
 	"tail-based-sampling/src/backendprocess"
 	"tail-based-sampling/src/clientprocess"
@@ -42,7 +42,7 @@ func setParameter(c *gin.Context) {
 	util.KSamplingPort = port
 
 	//本地测试时需要注释掉
-	//util.KTraceDataPort = port
+	util.KTraceDataPort = port
 
 	//log.Println("KSamplingPort: ", util.KSamplingPort)
 	//log.Println("KTraceDataPort: ", util.KTraceDataPort)
@@ -66,8 +66,10 @@ func main() {
 
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 
-	r := gin.Default()
 	gin.SetMode(gin.ReleaseMode)
+	r := gin.Default()
+	pprof.Register(r) // 性能
+
 	r.GET("/ready", ready)
 	r.GET("/start", start)
 	r.GET("/setParameter", setParameter)
