@@ -2,7 +2,8 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	//"fmt"
+	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
 	"os"
@@ -22,27 +23,26 @@ import (
 //6、setWrongTrace
 //7、getWrongTrace
 
-func ready(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("suc"))
+func ready(c *gin.Context) {
+	c.String(http.StatusOK, "suc")
 }
 
-func start(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("suc"))
+func start(c *gin.Context) {
+	c.String(http.StatusOK, "suc")
 }
 
 //设置参数，默认情况下，trace-data 与 sampleing process 在同一端口上
-func setParameter(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-	port := query.Get("port")
+func setParameter(c *gin.Context) {
+	port := c.Query("port")
 	if len(port) == 0 {
-		w.Write([]byte("invalid port"))
+		c.String(http.StatusOK, "invalid port")
 		return
 	}
 
 	util.KSamplingPort = port
 
 	//本地测试时需要注释掉
-	util.KTraceDataPort = port
+	//util.KTraceDataPort = port
 
 	//log.Println("KSamplingPort: ", util.KSamplingPort)
 	//log.Println("KTraceDataPort: ", util.KTraceDataPort)
@@ -53,10 +53,10 @@ func setParameter(w http.ResponseWriter, r *http.Request) {
 		go backendprocess.Process()
 	}
 
-	w.Write([]byte("suc"))
+	c.String(http.StatusOK, "suc")
 }
 
-func exit(w http.ResponseWriter, r *http.Request) {
+func exit(c *gin.Context) {
 	os.Exit(0)
 }
 
@@ -66,19 +66,18 @@ func main() {
 
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 
-	http.HandleFunc("/ready", ready)
-	http.HandleFunc("/start", start)
-	http.HandleFunc("/setParameter", setParameter)
-	http.HandleFunc("/exit", exit)
+	r := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
+	r.GET("/ready", ready)
+	r.GET("/start", start)
+	r.GET("/setParameter", setParameter)
+	r.GET("/exit", exit)
 	if util.IsClientProcess() {
-		http.HandleFunc("/getWrongTrace", clientprocess.GetWrongTrace)
+		r.POST("/getWrongTrace", clientprocess.GetWrongTrace)
 	}
 	if util.IsBackendProcess() {
-		http.HandleFunc("/setWrongTraceId", backendprocess.SetWrongTraceId)
-		http.HandleFunc("/finish", backendprocess.Finish)
+		r.POST("/setWrongTraceId", backendprocess.SetWrongTraceId)
+		r.GET("/finish", backendprocess.Finish)
 	}
-	err := http.ListenAndServe(fmt.Sprint("127.0.0.1:", util.KListenPort), nil)
-	if err != nil {
-		panic(err)
-	}
+	r.Run(":" + util.KListenPort)
 }

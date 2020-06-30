@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	mapset "github.com/deckarep/golang-set"
+	"github.com/gin-gonic/gin"
 	md5simd "github.com/minio/md5-simd"
 	"go.uber.org/atomic"
 	"io/ioutil"
@@ -11,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
 	"strconv"
 	"sync"
 	"tail-based-sampling/src/util"
@@ -33,11 +33,10 @@ func init() {
 	FinishBatchChan = make(chan int, util.KBatchCount)
 }
 
-func SetWrongTraceId(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-
-	jsonStr := r.PostForm.Get("traceIdListJson")
-	batchPos, _ := strconv.Atoi(r.PostForm.Get("batchPos"))
+func SetWrongTraceId(c *gin.Context) {
+	//log.Println("dasdasddasd")
+	jsonStr := c.PostForm("traceIdListJson")
+	batchPos, _ := strconv.Atoi(c.PostForm("batchPos"))
 
 	//log.Println("jsonStr: ", jsonStr)
 	//log.Println("batchPos: ", batchPos)
@@ -58,14 +57,14 @@ func SetWrongTraceId(w http.ResponseWriter, r *http.Request) {
 	} else if wrongeTraceSet.Cardinality() > 0 {
 		TraceIdBatchSlice[pos].TraceIdSet = TraceIdBatchSlice[pos].TraceIdSet.Union(wrongeTraceSet)
 	}
-	w.Write([]byte("suc"))
+	c.String(http.StatusOK, "suc")
 }
 
 var FinishProcessCount = atomic.NewInt32(0)
 
-func Finish(w http.ResponseWriter, r *http.Request) {
+func Finish(c *gin.Context) {
 	FinishProcessCount.Inc()
-	w.Write([]byte("suc"))
+	c.String(http.StatusOK, "suc")
 }
 
 //保存最后计算的 md5 结果
@@ -92,7 +91,7 @@ func Process() {
 				break
 			}
 
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(1 * time.Millisecond)
 			continue
 		}
 
@@ -106,9 +105,6 @@ func Process() {
 
 			md5Hash := server.NewHash()
 			defer md5Hash.Close()
-
-			//临时保存 wrongTrace 的所有span
-			var wrongTraceMap = make(util.TraceMap)
 
 			//log.Println("traceIdBatch: ", traceIdBatch)
 			var batchPos int
@@ -177,30 +173,6 @@ func Process() {
 
 			wg.Done()
 
-			return
-
-			//old
-			for i := 0; i < 2; i++ {
-				traceMap := <-ch
-				for traceId := range traceMap {
-					wrongTraceMap[traceId] = append(wrongTraceMap[traceId], traceMap[traceId]...)
-				}
-			}
-
-			//计算 md5
-			for traceId := range wrongTraceMap {
-				//TODO 排序优化
-				sort.Sort(wrongTraceMap[traceId])
-
-				//TODO 异步化 md5 操作
-				md5Hash.Reset()
-				for span := range wrongTraceMap[traceId] {
-					md5Hash.Write(wrongTraceMap[traceId][span])
-				}
-				digest := md5Hash.Sum([]byte{})
-				traceMd5Map[string(traceId)] = fmt.Sprintf("%x", digest)
-			}
-			wg.Done()
 		}(traceIdBatch)
 	}
 

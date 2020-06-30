@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	mapset "github.com/deckarep/golang-set"
+	"github.com/gin-gonic/gin"
 	"io"
 	"log"
 	"net/http"
@@ -20,17 +21,16 @@ func init() {
 	BatchTraceList = make(util.TraceMapSlice, util.KBatchCount+1)
 }
 
-func GetWrongTrace(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	wrongTraceSetStr := r.PostForm.Get("traceIdList")
-	batchPos, _ := strconv.Atoi(r.PostForm.Get("batchPos"))
+func GetWrongTrace(c *gin.Context) {
+	wrongTraceSetStr := c.PostForm("traceIdList")
+	batchPos, _ := strconv.Atoi(c.PostForm("batchPos"))
 
 	//log.Println("wrongTraceSet: ", wrongTraceSetStr)
 	//log.Println("batchPos: ", batchPos)
 
 	data := getWrongTracing(wrongTraceSetStr, batchPos)
 
-	w.Write([]byte(data))
+	c.Writer.Write(util.Str2bytes(data))
 }
 
 // RestFul 接口实际调用的本函数，根据 TraceIds 获得所有的日志
