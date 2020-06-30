@@ -53,9 +53,9 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) string {
 	traceMap := make(util.TraceMap)
 	getWrongTracingWithBatch := func(pos int) {
 		for traceId := range wrongTraceSet.Iter() {
-			if BatchTraceList[pos] != nil {
+			if BatchTraceList[pos].TraceMap != nil {
 				traceIdStr := util.TraceId(traceId.(string))
-				traceMap[traceIdStr] = append(traceMap[traceIdStr], BatchTraceList[pos][traceIdStr]...)
+				traceMap[traceIdStr] = append(traceMap[traceIdStr], BatchTraceList[pos].TraceMap[traceIdStr]...)
 			}
 		}
 	}
@@ -67,7 +67,27 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) string {
 	//TODO to clear spans, don't block client process thread. TODO to use lock/notify
 
 	if batchPos != 0 {
-		BatchTraceList[pre] = nil
+		if BatchTraceList[pre].TraceMap != nil {
+			BatchTraceList[pre].Count++
+			if BatchTraceList[pre].Count == 3 || (BatchTraceList[pre].Count == 2 && (batchPos == 1 || batchPos == 0)) {
+				BatchTraceList[pre].TraceMap = nil
+				BatchTraceList[pre].Count = 0
+			}
+		}
+		if BatchTraceList[pos].TraceMap != nil {
+			BatchTraceList[pos].Count++
+			if BatchTraceList[pos].Count == 3 {
+				BatchTraceList[pos].TraceMap = nil
+				BatchTraceList[pos].Count = 0
+			}
+		}
+		if BatchTraceList[next].TraceMap != nil {
+			BatchTraceList[next].Count++
+			if BatchTraceList[next].Count == 3 {
+				BatchTraceList[next].TraceMap = nil
+				BatchTraceList[next].Count = 0
+			}
+		}
 		//log.Println("free pos: ", batchPos)
 	}
 	//log.Println("nil pre: ", pre)
@@ -97,6 +117,8 @@ func ProcessTraceData() {
 	var pos int = 0 //BatchTraceList 中正在操作的 index
 	wrongTraceSet := mapset.NewSet()
 	traceMap := make(util.TraceMap)
+
+	begin := time.Now()
 	for {
 		line, err := bufReader.ReadBytes('\n') //传入固定大小数组，可以优化性能？
 		if err != nil && err != io.EOF {
@@ -124,17 +146,16 @@ func ProcessTraceData() {
 		tags := line[lastIndex : len(line)-1]
 
 		if len(tags) > 0 {
-			//判断 line 最后有没有换行符，没有则补上,目前假设每行都有一个换行符
-			//if line[len(line) - 1] != '\n'{
-			//	line = append(line, '\n')
+			//if _, ok := traceMap[util.TraceId(traceId)]; ok == false{
+			//	traceMap[util.TraceId(traceId)] = make(util.SpanSlice, 0, 2048)
 			//}
 
 			traceMap[util.TraceId(traceId)] = append(traceMap[util.TraceId(traceId)], line)
 
 			if len(tags) > 8 {
-				if strings.Contains(string(tags), "error=1") ||
-					(strings.Contains(string(tags), "http.status_code=") &&
-						!strings.Contains(string(tags), "http.status_code=200")) {
+				if strings.Contains(util.Bytes2str(tags), "error=1") ||
+					(strings.Contains(util.Bytes2str(tags), "http.status_code=") &&
+						!strings.Contains(util.Bytes2str(tags), "http.status_code=200")) {
 					wrongTraceSet.Add(util.TraceId(traceId))
 				}
 			}
@@ -146,12 +167,12 @@ func ProcessTraceData() {
 
 			//TODO BatchTraceList需要互斥访问
 		repeat:
-			if BatchTraceList[pos] == nil {
-				BatchTraceList[pos] = traceMap
+			if BatchTraceList[pos].TraceMap == nil {
+				BatchTraceList[pos].TraceMap = traceMap
 				traceMap = make(util.TraceMap)
 				//log.Println(len(BatchTraceList[0]), len(BatchTraceList[1]), len(BatchTraceList[2]), len(BatchTraceList[3]),len(BatchTraceList[4]))
 			} else { //不为空，说明尚未被消费，需要等待
-				time.Sleep(1000 * time.Millisecond)
+				time.Sleep(1 * time.Millisecond)
 
 				//log.Printf("%s\n", BatchTraceList)
 				log.Println("pos = ", pos)
@@ -164,13 +185,15 @@ func ProcessTraceData() {
 		}
 	}
 
+	log.Printf("%v\n", time.Since(begin))
+
 	if wrongTraceSet.Cardinality() > 0 {
 		batchPos := lineCount / util.KBatchSize
 	repeat2:
-		if BatchTraceList[pos] == nil {
-			BatchTraceList[pos] = traceMap
+		if BatchTraceList[pos].TraceMap == nil {
+			BatchTraceList[pos].TraceMap = traceMap
 		} else { //不为空，说明尚未被消费，需要等待
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(1 * time.Millisecond)
 			goto repeat2
 		}
 

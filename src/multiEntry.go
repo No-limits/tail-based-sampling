@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	_ "net/http/pprof"
 	"os"
+
+	//_ "net/http/pprof"
 	"tail-based-sampling/src/backendprocess"
 	"tail-based-sampling/src/clientprocess"
 	"tail-based-sampling/src/util"
