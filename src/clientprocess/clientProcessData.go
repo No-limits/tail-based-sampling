@@ -64,8 +64,6 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) string {
 	getWrongTracingWithBatch(pos)
 	getWrongTracingWithBatch(next)
 
-	//TODO to clear spans, don't block client process thread. TODO to use lock/notify
-
 	//if batchPos != 0 {
 	if BatchTraceList[pre].TraceMap != nil {
 		BatchTraceList[pre].Count++
@@ -171,7 +169,7 @@ func ProcessTraceData() {
 				BatchTraceList[pos].TraceMap = traceMap
 				traceMap = make(util.TraceMap)
 			} else { //不为空，说明尚未被消费，需要等待
-				time.Sleep(10 * time.Millisecond)
+				time.Sleep(1 * time.Millisecond)
 				//log.Println("pos = ", pos)
 				//log.Println(BatchTraceList[0].TraceMap != nil, BatchTraceList[0].Count, BatchTraceList[1].TraceMap != nil, BatchTraceList[1].Count, BatchTraceList[2].TraceMap != nil, BatchTraceList[2].Count)
 				goto repeat
@@ -191,7 +189,7 @@ repeat2:
 	if BatchTraceList[pos].TraceMap == nil {
 		BatchTraceList[pos].TraceMap = traceMap
 	} else { //不为空，说明尚未被消费，需要等待
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(1 * time.Millisecond)
 		goto repeat2
 	}
 
