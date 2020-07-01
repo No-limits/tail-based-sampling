@@ -2,8 +2,7 @@ package main
 
 import (
 	"flag"
-	//"fmt"
-	"github.com/gin-contrib/pprof"
+
 	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
@@ -67,8 +66,9 @@ func main() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 
 	gin.SetMode(gin.ReleaseMode)
-	r := gin.Default()
-	pprof.Register(r) // 性能
+	r := gin.New()
+	r.Use(gin.Recovery())
+	//pprof.Register(r) // 性能
 
 	r.GET("/ready", ready)
 	r.GET("/start", start)
@@ -81,5 +81,5 @@ func main() {
 		r.POST("/setWrongTraceId", backendprocess.SetWrongTraceId)
 		r.GET("/finish", backendprocess.Finish)
 	}
-	r.Run(":" + util.KListenPort)
+	r.Run("127.0.0.1:" + util.KListenPort)
 }

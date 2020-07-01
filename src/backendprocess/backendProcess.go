@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"sync"
 	"tail-based-sampling/src/util"
@@ -126,39 +127,14 @@ func Process() {
 			}
 
 			for id := range traceIdSet.Iter() {
-				i, j := 0, 0
-				ilen, jlen := -1, -1
-				spanSlice1, ok := traceMap1[util.TraceId(id.(string))]
-				if ok {
-					ilen = len(spanSlice1)
-				}
-
-				spanSlice2, ok := traceMap2[util.TraceId(id.(string))]
-				if ok {
-					jlen = len(spanSlice2)
-				}
+				spanSlice := make(util.SpanSlice, 0, 128)
+				spanSlice = append(spanSlice, traceMap1[util.TraceId(id.(string))]...)
+				spanSlice = append(spanSlice, traceMap2[util.TraceId(id.(string))]...)
+				sort.Sort(spanSlice)
 
 				md5Hash.Reset()
-
-				flag1, flag2 := i < ilen, j < jlen
-				for flag1 || flag2 {
-					switch {
-					case flag1 && flag2:
-						if util.Bytes2str(spanSlice1[i]) < util.Bytes2str(spanSlice2[j]) {
-							md5Hash.Write(spanSlice1[i])
-							i++
-						} else {
-							md5Hash.Write(spanSlice2[j])
-							j++
-						}
-					case flag1 && !flag2:
-						md5Hash.Write(spanSlice1[i])
-						i++
-					case !flag1 && flag2:
-						md5Hash.Write(spanSlice2[j])
-						j++
-					}
-					flag1, flag2 = i < ilen, j < jlen
+				for _, span := range spanSlice {
+					md5Hash.Write(span)
 				}
 
 				digest := md5Hash.Sum([]byte{})
@@ -166,6 +142,55 @@ func Process() {
 				mutex.Lock()
 				traceMd5Map[id.(string)] = fmt.Sprintf("%x", digest)
 				mutex.Unlock()
+				continue
+
+				//i, j := 0, 0
+				//ilen, jlen := -1, -1
+				//spanSlice1, ok := traceMap1[util.TraceId(id.(string))]
+				//if ok {
+				//	ilen = len(spanSlice1)
+				//}
+				//
+				//spanSlice2, ok := traceMap2[util.TraceId(id.(string))]
+				//if ok {
+				//	jlen = len(spanSlice2)
+				//}
+				//
+				//md5Hash.Reset()
+				//
+				//flag1, flag2 := i < ilen, j < jlen
+				//for flag1 || flag2 {
+				//	switch {
+				//	case flag1 && flag2:
+				//		if util.Bytes2str(spanSlice1[i]) < util.Bytes2str(spanSlice2[j]) {
+				//			if "17ff7cb829358b03" == id{
+				//				fmt.Printf("%s", spanSlice1[i])
+				//			}
+				//			md5Hash.Write(spanSlice1[i])
+				//			i++
+				//		} else {
+				//			if "17ff7cb829358b03" == id{
+				//				fmt.Printf("%s", spanSlice2[j])
+				//			}
+				//			md5Hash.Write(spanSlice2[j])
+				//			j++
+				//		}
+				//	case flag1 && !flag2:
+				//		md5Hash.Write(spanSlice1[i])
+				//		i++
+				//	case !flag1 && flag2:
+				//
+				//		md5Hash.Write(spanSlice2[j])
+				//		j++
+				//	}
+				//	flag1, flag2 = i < ilen, j < jlen
+				//}
+				//
+				//digest := md5Hash.Sum([]byte{})
+				//
+				//mutex.Lock()
+				//traceMd5Map[id.(string)] = fmt.Sprintf("%x", digest)
+				//mutex.Unlock()
 			}
 
 			wg.Done()

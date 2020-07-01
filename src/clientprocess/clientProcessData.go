@@ -57,6 +57,10 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) string {
 				traceIdStr := util.TraceId(traceId.(string))
 				traceMap[traceIdStr] = append(traceMap[traceIdStr], BatchTraceList[pos].TraceMap[traceIdStr]...)
 			}
+			//if "17ff7cb829358b03" == traceId.(string){
+			//	log.Println("", traceMap[util.TraceId(traceId.(string))].Len())
+			//	log.Printf("%s",traceMap[util.TraceId(traceId.(string))])
+			//}
 		}
 	}
 
