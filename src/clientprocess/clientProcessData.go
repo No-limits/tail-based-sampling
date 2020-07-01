@@ -6,6 +6,7 @@ import (
 	mapset "github.com/deckarep/golang-set"
 	"github.com/gin-gonic/gin"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -19,6 +20,7 @@ var BatchTraceList util.TraceMapSlice
 
 func init() {
 	BatchTraceList = make(util.TraceMapSlice, util.KBatchCount+1)
+	BatchTraceList[0].Count = 1
 }
 
 func GetWrongTrace(c *gin.Context) {
@@ -71,7 +73,7 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) string {
 	//if batchPos != 0 {
 	if BatchTraceList[pre].TraceMap != nil {
 		BatchTraceList[pre].Count++
-		if BatchTraceList[pre].Count == 3 || (BatchTraceList[pre].Count == 2 && (batchPos == 1 || batchPos == 0)) {
+		if BatchTraceList[pre].Count == 3 {
 			BatchTraceList[pre].TraceMap = nil
 			BatchTraceList[pre].Count = 0
 			//log.Println("free pos: ", pre)
@@ -175,7 +177,8 @@ func ProcessTraceData() {
 			} else { //不为空，说明尚未被消费，需要等待
 				time.Sleep(1 * time.Millisecond)
 				//log.Println("pos = ", pos)
-				//log.Println(BatchTraceList[0].TraceMap != nil, BatchTraceList[0].Count, BatchTraceList[1].TraceMap != nil, BatchTraceList[1].Count, BatchTraceList[2].TraceMap != nil, BatchTraceList[2].Count)
+				//log.Print(BatchTraceList[(pos - 1 + len(BatchTraceList)) % len(BatchTraceList)].Count, BatchTraceList[pos].Count,
+				//	BatchTraceList[(pos + 1) % len(BatchTraceList)].Count)
 				goto repeat
 			}
 
@@ -193,7 +196,7 @@ repeat2:
 	if BatchTraceList[pos].TraceMap == nil {
 		BatchTraceList[pos].TraceMap = traceMap
 	} else { //不为空，说明尚未被消费，需要等待
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		goto repeat2
 	}
 
@@ -219,6 +222,7 @@ func updateWrongTraceId(wrongTraceSet mapset.Set, batchPos int) {
 	resp, err := http.PostForm("http://localhost:8002/setWrongTraceId", data)
 	//req, _ := http.NewRequest("POST", "http://localhost:8002/setWrongTraceId", strings.NewReader(data.Encode()))
 	//resp, _ := util.CallHTTP(req)
+	ioutil.ReadAll(resp.Body)
 	if err == nil {
 		defer resp.Body.Close()
 	} else {
@@ -234,6 +238,7 @@ func notifyFinish() {
 	}
 
 	resp, err := util.CallHTTP(req)
+	ioutil.ReadAll(resp.Body)
 	if err == nil {
 		defer resp.Body.Close()
 	} else {

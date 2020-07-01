@@ -142,59 +142,8 @@ func Process() {
 				mutex.Lock()
 				traceMd5Map[id.(string)] = fmt.Sprintf("%x", digest)
 				mutex.Unlock()
-				continue
-
-				//i, j := 0, 0
-				//ilen, jlen := -1, -1
-				//spanSlice1, ok := traceMap1[util.TraceId(id.(string))]
-				//if ok {
-				//	ilen = len(spanSlice1)
-				//}
-				//
-				//spanSlice2, ok := traceMap2[util.TraceId(id.(string))]
-				//if ok {
-				//	jlen = len(spanSlice2)
-				//}
-				//
-				//md5Hash.Reset()
-				//
-				//flag1, flag2 := i < ilen, j < jlen
-				//for flag1 || flag2 {
-				//	switch {
-				//	case flag1 && flag2:
-				//		if util.Bytes2str(spanSlice1[i]) < util.Bytes2str(spanSlice2[j]) {
-				//			if "17ff7cb829358b03" == id{
-				//				fmt.Printf("%s", spanSlice1[i])
-				//			}
-				//			md5Hash.Write(spanSlice1[i])
-				//			i++
-				//		} else {
-				//			if "17ff7cb829358b03" == id{
-				//				fmt.Printf("%s", spanSlice2[j])
-				//			}
-				//			md5Hash.Write(spanSlice2[j])
-				//			j++
-				//		}
-				//	case flag1 && !flag2:
-				//		md5Hash.Write(spanSlice1[i])
-				//		i++
-				//	case !flag1 && flag2:
-				//
-				//		md5Hash.Write(spanSlice2[j])
-				//		j++
-				//	}
-				//	flag1, flag2 = i < ilen, j < jlen
-				//}
-				//
-				//digest := md5Hash.Sum([]byte{})
-				//
-				//mutex.Lock()
-				//traceMd5Map[id.(string)] = fmt.Sprintf("%x", digest)
-				//mutex.Unlock()
 			}
-
 			wg.Done()
-
 		}(traceIdBatch)
 	}
 
@@ -264,7 +213,7 @@ func sendMd5Result() bool {
 	}
 
 	//log.Printf("%s\n", result)
-
+	ioutil.ReadAll(resp.Body)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		//log.Println("suc to sendCheckSum, result:" + util.Bytes2str(result))
 		return true

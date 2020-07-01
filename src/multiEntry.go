@@ -2,6 +2,9 @@ package main
 
 import (
 	"flag"
+	"github.com/gin-contrib/pprof"
+	"net"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"log"
@@ -65,10 +68,31 @@ func main() {
 
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 
+	http.DefaultClient.Transport = &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          0,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		MaxConnsPerHost:       1000,
+		MaxIdleConnsPerHost:   1000,
+		DisableKeepAlives:     false,
+	}
+
+	http.DefaultTransport.(*http.Transport).MaxIdleConns = 0
+	http.DefaultTransport.(*http.Transport).MaxConnsPerHost = 1000
+	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = 1000
+
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
-	//pprof.Register(r) // 性能
+	pprof.Register(r) // 性能
 
 	r.GET("/ready", ready)
 	r.GET("/start", start)
