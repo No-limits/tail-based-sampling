@@ -227,7 +227,7 @@ func ProcessTraceData() {
 
 	const chunkSize int = 64 * 1024 * 1024
 	const downloadGoCount int = 12
-	begin := time.Now()
+	//begin := time.Now()
 
 	downLoadChans := make([]chan *bytes.Buffer, downloadGoCount)
 	for i := 0; i < len(downLoadChans); i++ {
@@ -328,10 +328,10 @@ func ProcessTraceData() {
 				BatchTraceList[pos].TraceMap = traceMap
 				traceMap = make(util.TraceMap)
 			} else { //不为空，说明尚未被消费，需要等待
-				time.Sleep(1 * time.Millisecond)
-				//log.Println("pos = ", pos)
-				//log.Print(BatchTraceList[(pos - 1 + len(BatchTraceList)) % len(BatchTraceList)].Count, BatchTraceList[pos].Count,
-				//	BatchTraceList[(pos + 1) % len(BatchTraceList)].Count)
+				time.Sleep(1000 * time.Millisecond)
+				log.Println("pos = ", pos)
+				log.Print(BatchTraceList[(pos-1+len(BatchTraceList))%len(BatchTraceList)].Count, BatchTraceList[pos].Count,
+					BatchTraceList[(pos+1)%len(BatchTraceList)].Count)
 				goto repeat
 			}
 
@@ -376,7 +376,7 @@ func ProcessTraceData() {
 		index++
 	}
 
-	log.Printf("%v\n", time.Since(begin))
+	//log.Printf("%v\n", time.Since(begin))
 	//log.Println("maxLen =", maxLen)
 
 	//if wrongTraceSet.Cardinality() > 0 {
