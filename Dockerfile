@@ -12,7 +12,9 @@ COPY . $GOPATH/src/tail-based-sampling
 
 #RUN go get -u -v ./src/...
 
+# set GOOS=linux
 #RUN go build -o tail-based-sampling ./src
+#RUN go build -o easyjson github.com/mailru/easyjson/easyjson
 RUN chmod +x ./tail-based-sampling
 
 RUN chmod +x ./start.sh

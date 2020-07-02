@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"tail-based-sampling/src/proto"
 	"tail-based-sampling/src/util"
 	"time"
 )
@@ -42,8 +43,15 @@ func SetWrongTraceId(c *gin.Context) {
 	//log.Println("jsonStr: ", jsonStr)
 	//log.Println("batchPos: ", batchPos)
 
+	var ss proto.TraceIds
+	ss.UnmarshalJSON(util.Str2bytes(jsonStr))
+
 	wrongeTraceSet := mapset.NewSet()
-	json.Unmarshal([]byte(jsonStr), &wrongeTraceSet)
+	for _, traceId := range ss.TraceIds {
+		wrongeTraceSet.Add(traceId)
+	}
+
+	//json.Unmarshal([]byte(jsonStr), &wrongeTraceSet)
 
 	pos := batchPos % util.KBatchCount
 	if TraceIdBatchSlice[pos].BatchPos != 0 && TraceIdBatchSlice[pos].BatchPos != batchPos {
@@ -225,7 +233,13 @@ func sendMd5Result() bool {
 }
 
 func getWrongTrace(traceIdSet mapset.Set, batchPos int, clientPort string) util.TraceMap {
-	traceIdList, _ := json.Marshal(traceIdSet)
+	var traceIds proto.TraceIds
+	traceIds.TraceIds = make([]util.TraceId, 0, 512)
+	for traceId := range traceIdSet.Iter() {
+		traceIds.TraceIds = append(traceIds.TraceIds, traceId.(util.TraceId))
+	}
+	//traceIdList, _ := json.Marshal(traceIdSet)
+	traceIdList, _ := traceIds.MarshalJSON()
 	data := make(url.Values)
 	data.Add("traceIdList", util.Bytes2str(traceIdList))
 	data.Add("batchPos", strconv.Itoa(batchPos))
@@ -237,7 +251,9 @@ func getWrongTrace(traceIdSet mapset.Set, batchPos int, clientPort string) util.
 	}
 
 	body, _ := ioutil.ReadAll(resp.Body)
-	wrongTraceMap := make(util.TraceMap)
-	json.Unmarshal(body, &wrongTraceMap)
-	return wrongTraceMap
+	//wrongTraceMap := make(util.TraceMap)
+	//json.Unmarshal(body, &wrongTraceMap)
+	var mm proto.TraceMap
+	mm.UnmarshalJSON(body)
+	return mm.Traces
 }

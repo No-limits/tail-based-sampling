@@ -2,7 +2,6 @@ package clientprocess
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	mapset "github.com/deckarep/golang-set"
 	"github.com/gin-gonic/gin"
@@ -13,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"tail-based-sampling/src/proto"
 	"tail-based-sampling/src/util"
 	"time"
 )
@@ -33,14 +33,17 @@ func GetWrongTrace(c *gin.Context) {
 
 	data := getWrongTracing(wrongTraceSetStr, batchPos)
 
-	c.Writer.Write(util.Str2bytes(data))
+	c.Writer.Write(data)
 }
 
 // RestFul 接口实际调用的本函数，根据 TraceIds 获得所有的日志
-func getWrongTracing(wrongTraceSetStr string, batchPos int) string {
+func getWrongTracing(wrongTraceSetStr string, batchPos int) []byte {
 
-	wrongTraceSet := mapset.NewSet()
-	json.Unmarshal([]byte(wrongTraceSetStr), &wrongTraceSet)
+	//wrongTraceSet := mapset.NewSet()
+	//json.Unmarshal([]byte(wrongTraceSetStr), &wrongTraceSet)
+
+	var traceIds proto.TraceIds
+	traceIds.UnmarshalJSON(util.Str2bytes(wrongTraceSetStr))
 
 	pos := batchPos % util.KBatchCount
 	//log.Println(" getwrongtracing batchpos:", batchPos, "pos: ", pos)
@@ -55,9 +58,9 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) string {
 
 	traceMap := make(util.TraceMap)
 	getWrongTracingWithBatch := func(pos int) {
-		for traceId := range wrongTraceSet.Iter() {
+		for _, traceId := range traceIds.TraceIds {
 			if BatchTraceList[pos].TraceMap != nil {
-				traceIdStr := util.TraceId(traceId.(string))
+				traceIdStr := util.TraceId(traceId)
 				traceMap[traceIdStr] = append(traceMap[traceIdStr], BatchTraceList[pos].TraceMap[traceIdStr]...)
 			}
 		}
@@ -93,8 +96,11 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) string {
 		}
 	}
 	//}
-	bytes, _ := json.Marshal(traceMap)
-	return string(bytes)
+
+	mm := proto.TraceMap{traceMap}
+	bytes, _ := mm.MarshalJSON()
+	//bytes, _ := json.Marshal(traceMap)
+	return bytes
 }
 
 //func ProcessTraceData() {
@@ -394,7 +400,15 @@ repeat2:
 
 //向 backendprocess 更新错误的 traceId
 func updateWrongTraceId(wrongTraceSet mapset.Set, batchPos int) {
-	jsonStr, _ := json.Marshal(wrongTraceSet)
+	traceIds := make([]util.TraceId, 0, 1024)
+	for tmp := range wrongTraceSet.Iter() {
+		traceIds = append(traceIds, tmp.(util.TraceId))
+	}
+
+	ss := proto.TraceIds{traceIds}
+	jsonStr, _ := ss.MarshalJSON()
+
+	//jsonStr, _ := json.Marshal(wrongTraceSet)
 	if len(jsonStr) <= 0 {
 		return
 	}
