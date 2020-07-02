@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"github.com/gin-contrib/pprof"
 	"net"
 	"time"
 
@@ -91,8 +90,8 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(gin.Recovery())
-	pprof.Register(r) // 性能
+	r.Use(gin.Logger(), gin.Recovery())
+	//pprof.Register(r) // 性能
 
 	r.GET("/ready", ready)
 	r.GET("/start", start)
