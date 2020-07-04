@@ -2,17 +2,15 @@ package main
 
 import (
 	"flag"
-	"net"
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"log"
+	"net"
 	"net/http"
 	"os"
-	//_ "net/http/pprof"
 	"tail-based-sampling/src/backendprocess"
 	"tail-based-sampling/src/clientprocess"
 	"tail-based-sampling/src/util"
+	"time"
 )
 
 //client process
@@ -90,7 +88,8 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
+	//r.Use(gin.Logger(), gin.Recovery())
+	r.Use(gin.Recovery())
 	//pprof.Register(r) // 性能
 
 	r.GET("/ready", ready)

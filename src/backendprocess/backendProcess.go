@@ -89,6 +89,20 @@ func Process() {
 	server := md5simd.NewServer()
 	defer server.Close()
 
+	md5HashPool := &sync.Pool{
+		New: func() interface{} {
+			md5Hash := server.NewHash()
+			return md5Hash
+		},
+	}
+
+	spanSlicePool := &sync.Pool{
+		New: func() interface{} {
+			slice := make(util.SpanSlice, 0, 2048)
+			return slice
+		},
+	}
+
 	wg := sync.WaitGroup{}
 
 	for {
@@ -109,8 +123,7 @@ func Process() {
 
 		go func(traceIdBatch TraceIdBatch) {
 
-			md5Hash := server.NewHash()
-			defer md5Hash.Close()
+			md5Hash := md5HashPool.Get().(md5simd.Hasher)
 
 			//log.Println("traceIdBatch: ", traceIdBatch)
 			var batchPos int
@@ -135,7 +148,7 @@ func Process() {
 			}
 
 			for id := range traceIdSet.Iter() {
-				spanSlice := make(util.SpanSlice, 0, 128)
+				spanSlice := spanSlicePool.Get().(util.SpanSlice)
 				spanSlice = append(spanSlice, traceMap1[util.TraceId(id.(string))]...)
 				spanSlice = append(spanSlice, traceMap2[util.TraceId(id.(string))]...)
 				sort.Sort(spanSlice)
@@ -147,10 +160,13 @@ func Process() {
 
 				digest := md5Hash.Sum([]byte{})
 
+				spanSlicePool.Put(spanSlice[:0])
+
 				mutex.Lock()
 				traceMd5Map[id.(string)] = fmt.Sprintf("%x", digest)
 				mutex.Unlock()
 			}
+			md5HashPool.Put(md5Hash)
 			wg.Done()
 		}(traceIdBatch)
 	}
