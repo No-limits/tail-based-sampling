@@ -28,16 +28,12 @@ type TraceIdBatch struct {
 
 //TODO 该 slice 会不会有多线程问题
 var TraceIdBatchSlice []TraceIdBatch
-var FinishBatchChan chan int
 var RecNumPerBatch int32 //每个Batch需要收到的 setTraceIds 请求的数量
 func init() {
 	TraceIdBatchSlice = make([]TraceIdBatch, util.KBatchCount)
-	FinishBatchChan = make(chan int, util.KBatchCount)
 	RecNumPerBatch = int32(util.KProcessCount * util.KClientConcurrentNum)
 }
 
-var allTraceId mapset.Set
-var allTraceMu sync.Mutex
 var bigMu sync.Mutex
 
 func SetWrongTraceId(c *gin.Context) {
@@ -54,9 +50,6 @@ func SetWrongTraceId(c *gin.Context) {
 	wrongeTraceSet := mapset.NewSet()
 	for _, traceId := range ss.TraceIds {
 		wrongeTraceSet.Add(traceId)
-		allTraceMu.Lock()
-		allTraceId.Add(traceId)
-		allTraceMu.Unlock()
 	}
 
 	//json.Unmarshal([]byte(jsonStr), &wrongeTraceSet)
@@ -93,7 +86,6 @@ var ssss atomic.Int32 //用于记录wrongTraceId的总数量
 
 func Process() {
 	ssss.Store(0)
-	allTraceId = mapset.NewSet()
 	var ports []string
 	ports = append(ports, util.KClientProcessPort1)
 	ports = append(ports, util.KClientProcessPort2)
@@ -120,7 +112,6 @@ func Process() {
 	for {
 		traceIdBatch, ok := getFinishedBatch()
 
-		//log.Println("TraceIdBatchSlice: ", TraceIdBatchSlice, " ok: ", ok)
 		if !ok {
 			if isFinished() {
 				break
@@ -216,16 +207,16 @@ var finishIndex int = 0
 func getFinishedBatch() (TraceIdBatch, bool) {
 	next := (finishIndex + 1) % util.KBatchCount
 
+	bigMu.Lock()
+	defer bigMu.Unlock()
 	currentBatch := TraceIdBatchSlice[finishIndex]
 	nextBatch := TraceIdBatchSlice[next]
 
 	if (int(FinishProcessCount.Load()) >= util.KProcessCount && currentBatch.BatchPos > 0) ||
 		(currentBatch.ProcessCount.Load() >= RecNumPerBatch && nextBatch.ProcessCount.Load() >= RecNumPerBatch) {
 
-		bigMu.Lock()
 		TraceIdBatchSlice[finishIndex] = TraceIdBatch{}
 
-		bigMu.Unlock()
 		finishIndex = next
 		return currentBatch, true
 	}
