@@ -23,6 +23,12 @@ var LineChans []chan []byte      //并行处理行的channel
 var BatchSizePerGo int           //每个batch由多个协程并行处理后，各自负责的数据量大小
 var ChanInitSize int             //初始化管道的大小
 var LineProcessWg sync.WaitGroup //等待并行处理的协程全部退出
+var downLoadChans []chan *bytes.Buffer
+var getBufferChans []chan *bytes.Buffer
+
+const chunkSize int = 64 * 1024 * 1024
+const downloadGoCount int = 1
+const bufferCount int = 10
 
 func init() {
 	BatchTraceList = make(util.BatchTraceLists, util.KBatchCount)
@@ -41,6 +47,21 @@ func init() {
 		BatchTraceList[i].Count.Store(0)
 	}
 	BatchTraceList[0].Count.Store(1)
+
+	downLoadChans := make([]chan *bytes.Buffer, downloadGoCount)
+	for i := 0; i < downloadGoCount; i++ {
+		downLoadChans[i] = make(chan *bytes.Buffer, bufferCount)
+	}
+
+	getBufferChans := make([]chan *bytes.Buffer, downloadGoCount)
+	for i := 0; i < downloadGoCount; i++ {
+		getBufferChans[i] = make(chan *bytes.Buffer, bufferCount)
+		for j := 0; j < bufferCount; j++ {
+			buffer := bytes.NewBuffer(nil)
+			buffer.Grow(chunkSize)
+			getBufferChans[i] <- buffer
+		}
+	}
 }
 
 func GetWrongTrace(c *gin.Context) {
@@ -221,25 +242,7 @@ func ProcessTraceData() {
 	//开启多个协程负责并行读取，每个协程读取的范围为64MB，注意开始和最后的换行符切割
 	//每个协程有一个channel负责存储，每个channel的长度目前定为2
 
-	const chunkSize int = 64 * 1024 * 1024
-	const downloadGoCount int = 1
-	const bufferCount int = 10
 	//begin := time.Now()
-
-	downLoadChans := make([]chan *bytes.Buffer, downloadGoCount)
-	for i := 0; i < downloadGoCount; i++ {
-		downLoadChans[i] = make(chan *bytes.Buffer, bufferCount)
-	}
-
-	getBufferChans := make([]chan *bytes.Buffer, downloadGoCount)
-	for i := 0; i < downloadGoCount; i++ {
-		getBufferChans[i] = make(chan *bytes.Buffer, bufferCount)
-		for j := 0; j < bufferCount; j++ {
-			buffer := bytes.NewBuffer(nil)
-			buffer.Grow(chunkSize)
-			getBufferChans[i] <- buffer
-		}
-	}
 
 	for i := 0; i < downloadGoCount; i++ {
 		go func(index int) {
