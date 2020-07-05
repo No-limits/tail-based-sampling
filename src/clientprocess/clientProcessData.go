@@ -84,11 +84,8 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) []byte {
 		}
 	}
 
+	BatchTraceList[pre].Mu.Lock()
 	getWrongTracingWithBatch(pre)
-	getWrongTracingWithBatch(pos)
-	getWrongTracingWithBatch(next)
-
-	//if batchPos != 0 {
 	if BatchTraceList[pre].TraceMapSlice[0] != nil {
 		BatchTraceList[pre].Count++
 		if BatchTraceList[pre].Count == 3 {
@@ -99,6 +96,10 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) []byte {
 			//log.Println("free pos: ", pre)
 		}
 	}
+	BatchTraceList[pre].Mu.Unlock()
+
+	BatchTraceList[pos].Mu.Lock()
+	getWrongTracingWithBatch(pos)
 	if BatchTraceList[pos].TraceMapSlice[0] != nil {
 		BatchTraceList[pos].Count++
 		if BatchTraceList[pos].Count == 3 {
@@ -109,6 +110,10 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) []byte {
 			//log.Println("free pos: ", pos)
 		}
 	}
+	BatchTraceList[pos].Mu.Unlock()
+
+	BatchTraceList[next].Mu.Lock()
+	getWrongTracingWithBatch(next)
 	if BatchTraceList[next].TraceMapSlice[0] != nil {
 		BatchTraceList[next].Count++
 		if BatchTraceList[next].Count == 3 {
@@ -119,11 +124,11 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) []byte {
 			//log.Println("free pos: ", next)
 		}
 	}
-	//}
+	BatchTraceList[next].Mu.Unlock()
 
 	mm := proto.TraceMap{traceMap}
 	bytes, _ := mm.MarshalJSON()
-	//bytes, _ := json.Marshal(traceMap)
+
 	return bytes
 }
 
@@ -168,11 +173,14 @@ func dealLine(lineChansIndex int) {
 		if lineCount%BatchSizePerGo == 0 {
 
 		repeat:
+			BatchTraceList[pos].Mu.Lock()
 			if BatchTraceList[pos].TraceMapSlice[lineChansIndex] == nil {
 				BatchTraceList[pos].TraceMapSlice[lineChansIndex] = traceMap
 				traceMap = make(util.TraceMap)
+				BatchTraceList[pos].Mu.Unlock()
 			} else { //不为空，说明尚未被消费，需要等待
 				time.Sleep(10 * time.Millisecond)
+				BatchTraceList[pos].Mu.Unlock()
 				goto repeat
 			}
 
@@ -185,11 +193,14 @@ func dealLine(lineChansIndex int) {
 	}
 
 repeat1:
+	BatchTraceList[pos].Mu.Lock()
 	if BatchTraceList[pos].TraceMapSlice[lineChansIndex] == nil {
 		BatchTraceList[pos].TraceMapSlice[lineChansIndex] = traceMap
 		traceMap = make(util.TraceMap)
+		BatchTraceList[pos].Mu.Unlock()
 	} else { //不为空，说明尚未被消费，需要等待
 		time.Sleep(10 * time.Millisecond)
+		BatchTraceList[pos].Mu.Unlock()
 		goto repeat1
 	}
 

@@ -75,7 +75,6 @@ func SetWrongTraceId(c *gin.Context) {
 	} else if wrongeTraceSet.Cardinality() > 0 {
 		TraceIdBatchSlice[pos].TraceIdSet = TraceIdBatchSlice[pos].TraceIdSet.Union(wrongeTraceSet)
 	}
-
 	bigMu.Unlock()
 	c.String(http.StatusOK, "suc")
 }

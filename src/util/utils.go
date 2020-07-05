@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"unsafe"
 )
 
@@ -48,6 +49,7 @@ type TraceMap map[string]SpanSlice
 type BatchTraceLists []struct {
 	TraceMapSlice []TraceMap
 	Count         int
+	Mu            sync.Mutex
 } // BatchTraceList
 
 func (s SpanSlice) Len() int {
