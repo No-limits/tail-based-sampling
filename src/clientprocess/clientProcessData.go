@@ -265,7 +265,11 @@ func ProcessTraceData() {
 				}
 
 				buffer.Reset()
-				io.Copy(buffer, resp.Body)
+				n, err := buffer.ReadFrom(resp.Body)
+				if n > int64(chunkSize) || err != nil {
+					panic("buffer.ReadFrom(resp.Body) error")
+				}
+				//count.Add(n)
 				downLoadChans[index] <- buffer
 			}
 		}(i)

@@ -9,4 +9,4 @@ var KBackendProcessPort string = "8002"
 var KBatchSize int = 20000
 var KProcessCount int = 2
 var KBatchCount int = 300
-var KClientConcurrentNum int = 1
+var KClientConcurrentNum int = 5
