@@ -38,8 +38,9 @@ func init() {
 
 	for i := 0; i < len(BatchTraceList); i++ {
 		BatchTraceList[i].TraceMapSlice = make([]util.TraceMap, util.KClientConcurrentNum)
+		BatchTraceList[i].Count.Store(0)
 	}
-	BatchTraceList[0].Count = 1
+	BatchTraceList[0].Count.Store(1)
 }
 
 func GetWrongTrace(c *gin.Context) {
@@ -84,47 +85,47 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) []byte {
 		}
 	}
 
-	BatchTraceList[pre].Mu.Lock()
+	//BatchTraceList[pre].Mu.Lock()
 	getWrongTracingWithBatch(pre)
 	if BatchTraceList[pre].TraceMapSlice[0] != nil {
-		BatchTraceList[pre].Count++
-		if BatchTraceList[pre].Count == 3 {
+		BatchTraceList[pre].Count.Inc()
+		if BatchTraceList[pre].Count.Load() == 3 {
 			for i := 0; i < util.KClientConcurrentNum; i++ {
 				BatchTraceList[pre].TraceMapSlice[i] = nil
 			}
-			BatchTraceList[pre].Count = 0
+			BatchTraceList[pre].Count.Store(0)
 			//log.Println("free pos: ", pre)
 		}
 	}
-	BatchTraceList[pre].Mu.Unlock()
+	//BatchTraceList[pre].Mu.Unlock()
 
-	BatchTraceList[pos].Mu.Lock()
+	//BatchTraceList[pos].Mu.Lock()
 	getWrongTracingWithBatch(pos)
 	if BatchTraceList[pos].TraceMapSlice[0] != nil {
-		BatchTraceList[pos].Count++
-		if BatchTraceList[pos].Count == 3 {
+		BatchTraceList[pos].Count.Inc()
+		if BatchTraceList[pos].Count.Load() == 3 {
 			for i := 0; i < util.KClientConcurrentNum; i++ {
 				BatchTraceList[pos].TraceMapSlice[i] = nil
 			}
-			BatchTraceList[pos].Count = 0
+			BatchTraceList[pos].Count.Store(0)
 			//log.Println("free pos: ", pos)
 		}
 	}
-	BatchTraceList[pos].Mu.Unlock()
+	//BatchTraceList[pos].Mu.Unlock()
 
-	BatchTraceList[next].Mu.Lock()
+	//BatchTraceList[next].Mu.Lock()
 	getWrongTracingWithBatch(next)
 	if BatchTraceList[next].TraceMapSlice[0] != nil {
-		BatchTraceList[next].Count++
-		if BatchTraceList[next].Count == 3 {
+		BatchTraceList[next].Count.Inc()
+		if BatchTraceList[next].Count.Load() == 3 {
 			for i := 0; i < util.KClientConcurrentNum; i++ {
 				BatchTraceList[next].TraceMapSlice[i] = nil
 			}
-			BatchTraceList[next].Count = 0
+			BatchTraceList[next].Count.Store(0)
 			//log.Println("free pos: ", next)
 		}
 	}
-	BatchTraceList[next].Mu.Unlock()
+	//BatchTraceList[next].Mu.Unlock()
 
 	mm := proto.TraceMap{traceMap}
 	bytes, _ := mm.MarshalJSON()
@@ -173,14 +174,14 @@ func dealLine(lineChansIndex int) {
 		if lineCount%BatchSizePerGo == 0 {
 
 		repeat:
-			BatchTraceList[pos].Mu.Lock()
+			//BatchTraceList[pos].Mu.Lock()
 			if BatchTraceList[pos].TraceMapSlice[lineChansIndex] == nil {
 				BatchTraceList[pos].TraceMapSlice[lineChansIndex] = traceMap
 				traceMap = make(util.TraceMap)
-				BatchTraceList[pos].Mu.Unlock()
+				//BatchTraceList[pos].Mu.Unlock()
 			} else { //不为空，说明尚未被消费，需要等待
 				time.Sleep(10 * time.Millisecond)
-				BatchTraceList[pos].Mu.Unlock()
+				//BatchTraceList[pos].Mu.Unlock()
 				goto repeat
 			}
 
@@ -193,14 +194,14 @@ func dealLine(lineChansIndex int) {
 	}
 
 repeat1:
-	BatchTraceList[pos].Mu.Lock()
+	//BatchTraceList[pos].Mu.Lock()
 	if BatchTraceList[pos].TraceMapSlice[lineChansIndex] == nil {
 		BatchTraceList[pos].TraceMapSlice[lineChansIndex] = traceMap
 		traceMap = make(util.TraceMap)
-		BatchTraceList[pos].Mu.Unlock()
+		//BatchTraceList[pos].Mu.Unlock()
 	} else { //不为空，说明尚未被消费，需要等待
 		time.Sleep(10 * time.Millisecond)
-		BatchTraceList[pos].Mu.Unlock()
+		//BatchTraceList[pos].Mu.Unlock()
 		goto repeat1
 	}
 
@@ -220,9 +221,9 @@ func ProcessTraceData() {
 	//开启多个协程负责并行读取，每个协程读取的范围为64MB，注意开始和最后的换行符切割
 	//每个协程有一个channel负责存储，每个channel的长度目前定为2
 
-	const chunkSize int = 1 * 1024 * 1024
+	const chunkSize int = 64 * 1024 * 1024
 	const downloadGoCount int = 1
-	const bufferCount int = 100
+	const bufferCount int = 10
 	//begin := time.Now()
 
 	downLoadChans := make([]chan *bytes.Buffer, downloadGoCount)

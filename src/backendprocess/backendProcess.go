@@ -60,9 +60,10 @@ func SetWrongTraceId(c *gin.Context) {
 			"  TraceIdBatchSlice[pos].BatchPos: ", TraceIdBatchSlice[pos].BatchPos, "batchPos: ", batchPos)
 	}
 	//6f19e284fb2b4c6a
-	bigMu.Lock()
 	TraceIdBatchSlice[pos].BatchPos = batchPos
 	TraceIdBatchSlice[pos].ProcessCount.Inc()
+
+	bigMu.Lock()
 	if TraceIdBatchSlice[pos].TraceIdSet == nil {
 		TraceIdBatchSlice[pos].TraceIdSet = wrongeTraceSet
 	} else if wrongeTraceSet.Cardinality() > 0 {
@@ -207,14 +208,14 @@ var finishIndex int = 0
 func getFinishedBatch() (TraceIdBatch, bool) {
 	next := (finishIndex + 1) % util.KBatchCount
 
-	bigMu.Lock()
-	defer bigMu.Unlock()
 	currentBatch := TraceIdBatchSlice[finishIndex]
 	nextBatch := TraceIdBatchSlice[next]
 
 	if (int(FinishProcessCount.Load()) >= util.KProcessCount && currentBatch.BatchPos > 0) ||
 		(currentBatch.ProcessCount.Load() >= RecNumPerBatch && nextBatch.ProcessCount.Load() >= RecNumPerBatch) {
 
+		bigMu.Lock()
+		defer bigMu.Unlock()
 		TraceIdBatchSlice[finishIndex] = TraceIdBatch{}
 
 		finishIndex = next

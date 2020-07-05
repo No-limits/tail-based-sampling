@@ -1,6 +1,7 @@
 package util
 
 import (
+	"go.uber.org/atomic"
 	"net/http"
 	"strconv"
 	"strings"
@@ -48,7 +49,7 @@ type SpanSlice []Span
 type TraceMap map[string]SpanSlice
 type BatchTraceLists []struct {
 	TraceMapSlice []TraceMap
-	Count         int
+	Count         atomic.Int32
 	Mu            sync.Mutex
 } // BatchTraceList
 
