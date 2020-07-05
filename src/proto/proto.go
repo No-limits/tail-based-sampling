@@ -4,7 +4,7 @@ import "tail-based-sampling/src/util"
 
 //easyjson:json
 type TraceIds struct {
-	TraceIds []util.TraceId `json:"trace_ids"`
+	TraceIds []string `json:"trace_ids"`
 }
 
 //easyjson:json

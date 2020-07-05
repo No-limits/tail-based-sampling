@@ -42,11 +42,12 @@ func Bytes2str(b []byte) string {
 
 type Span []byte
 type SpanSlice []Span
-type TraceId string
-type TraceMap map[TraceId]SpanSlice
-type TraceMapSlice []struct {
-	TraceMap TraceMap
-	Count    int
+
+//type TraceId string
+type TraceMap map[string]SpanSlice
+type BatchTraceLists []struct {
+	TraceMapSlice []TraceMap
+	Count         int
 } // BatchTraceList
 
 func (s SpanSlice) Len() int {

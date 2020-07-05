@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 	"log"
 	"net"
@@ -42,9 +43,6 @@ func setParameter(c *gin.Context) {
 
 	//本地测试时需要注释掉
 	util.KTraceDataPort = port
-
-	//log.Println("KSamplingPort: ", util.KSamplingPort)
-	//log.Println("KTraceDataPort: ", util.KTraceDataPort)
 
 	if util.IsClientProcess() {
 		go clientprocess.ProcessTraceData()
@@ -90,7 +88,7 @@ func main() {
 	r := gin.New()
 	//r.Use(gin.Logger(), gin.Recovery())
 	r.Use(gin.Recovery())
-	//pprof.Register(r) // 性能
+	pprof.Register(r) // 性能
 
 	r.GET("/ready", ready)
 	r.GET("/start", start)

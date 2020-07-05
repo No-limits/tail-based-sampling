@@ -12,15 +12,33 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"tail-based-sampling/src/proto"
 	"tail-based-sampling/src/util"
 	"time"
 )
 
-var BatchTraceList util.TraceMapSlice
+var BatchTraceList util.BatchTraceLists
+var LineChans []chan []byte      //并行处理行的channel
+var BatchSizePerGo int           //每个batch由多个协程并行处理后，各自负责的数据量大小
+var ChanInitSize int             //初始化管道的大小
+var LineProcessWg sync.WaitGroup //等待并行处理的协程全部退出
 
 func init() {
-	BatchTraceList = make(util.TraceMapSlice, util.KBatchCount+1)
+	BatchTraceList = make(util.BatchTraceLists, util.KBatchCount)
+	BatchSizePerGo = util.KBatchSize / util.KClientConcurrentNum
+	ChanInitSize = 200000
+
+	LineChans = make([]chan []byte, util.KClientConcurrentNum)
+	LineProcessWg.Add(util.KClientConcurrentNum)
+	for i := 0; i < util.KClientConcurrentNum; i++ {
+		LineChans[i] = make(chan []byte, ChanInitSize)
+		go dealLine(i)
+	}
+
+	for i := 0; i < len(BatchTraceList); i++ {
+		BatchTraceList[i].TraceMapSlice = make([]util.TraceMap, util.KClientConcurrentNum)
+	}
 	BatchTraceList[0].Count = 1
 }
 
@@ -29,7 +47,7 @@ func GetWrongTrace(c *gin.Context) {
 	batchPos, _ := strconv.Atoi(c.PostForm("batchPos"))
 
 	//log.Println("wrongTraceSet: ", wrongTraceSetStr)
-	//log.Println("batchPos: ", batchPos)
+	//log.Println("get wrongtrace batchPos: ", batchPos)
 
 	data := getWrongTracing(wrongTraceSetStr, batchPos)
 
@@ -46,7 +64,6 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) []byte {
 	traceIds.UnmarshalJSON(util.Str2bytes(wrongTraceSetStr))
 
 	pos := batchPos % util.KBatchCount
-	//log.Println(" getwrongtracing batchpos:", batchPos, "pos: ", pos)
 	pre := pos - 1
 	if pre == -1 {
 		pre = util.KBatchCount - 1
@@ -59,9 +76,10 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) []byte {
 	traceMap := make(util.TraceMap)
 	getWrongTracingWithBatch := func(pos int) {
 		for _, traceId := range traceIds.TraceIds {
-			if BatchTraceList[pos].TraceMap != nil {
-				traceIdStr := util.TraceId(traceId)
-				traceMap[traceIdStr] = append(traceMap[traceIdStr], BatchTraceList[pos].TraceMap[traceIdStr]...)
+			for i := 0; i < util.KClientConcurrentNum; i++ {
+				if BatchTraceList[pos].TraceMapSlice[i] != nil {
+					traceMap[traceId] = append(traceMap[traceId], BatchTraceList[pos].TraceMapSlice[i][traceId]...)
+				}
 			}
 		}
 	}
@@ -71,26 +89,32 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) []byte {
 	getWrongTracingWithBatch(next)
 
 	//if batchPos != 0 {
-	if BatchTraceList[pre].TraceMap != nil {
+	if BatchTraceList[pre].TraceMapSlice[0] != nil {
 		BatchTraceList[pre].Count++
 		if BatchTraceList[pre].Count == 3 {
-			BatchTraceList[pre].TraceMap = nil
+			for i := 0; i < util.KClientConcurrentNum; i++ {
+				BatchTraceList[pre].TraceMapSlice[i] = nil
+			}
 			BatchTraceList[pre].Count = 0
 			//log.Println("free pos: ", pre)
 		}
 	}
-	if BatchTraceList[pos].TraceMap != nil {
+	if BatchTraceList[pos].TraceMapSlice[0] != nil {
 		BatchTraceList[pos].Count++
 		if BatchTraceList[pos].Count == 3 {
-			BatchTraceList[pos].TraceMap = nil
+			for i := 0; i < util.KClientConcurrentNum; i++ {
+				BatchTraceList[pos].TraceMapSlice[i] = nil
+			}
 			BatchTraceList[pos].Count = 0
 			//log.Println("free pos: ", pos)
 		}
 	}
-	if BatchTraceList[next].TraceMap != nil {
+	if BatchTraceList[next].TraceMapSlice[0] != nil {
 		BatchTraceList[next].Count++
 		if BatchTraceList[next].Count == 3 {
-			BatchTraceList[next].TraceMap = nil
+			for i := 0; i < util.KClientConcurrentNum; i++ {
+				BatchTraceList[next].TraceMapSlice[i] = nil
+			}
 			BatchTraceList[next].Count = 0
 			//log.Println("free pos: ", next)
 		}
@@ -101,6 +125,77 @@ func getWrongTracing(wrongTraceSetStr string, batchPos int) []byte {
 	bytes, _ := mm.MarshalJSON()
 	//bytes, _ := json.Marshal(traceMap)
 	return bytes
+}
+
+func dealLine(lineChansIndex int) {
+	lineCount := 0
+	traceMap := make(util.TraceMap)
+	wrongTraceSet := mapset.NewSet() //不是用 wrongTraceSet.Clear()
+	pos := 0
+
+	for line := range LineChans[lineChansIndex] {
+		if len(line) == 0 {
+			return
+		}
+		lineCount++
+
+		//获得 traceId
+		firstIndex := strings.Index(string(line), "|")
+		if firstIndex == -1 {
+			return
+		}
+		traceId := line[:firstIndex]
+
+		//获得 tags
+		lastIndex := strings.LastIndex(string(line), "|")
+		if lastIndex == -1 {
+			return
+		}
+		tags := line[lastIndex : len(line)-1]
+
+		if len(tags) > 0 {
+			traceMap[util.Bytes2str(traceId)] = append(traceMap[util.Bytes2str(traceId)], line)
+
+			if len(tags) > 8 {
+				if bytes.Contains((tags), []byte("error=1")) ||
+					(bytes.Contains((tags), []byte("http.status_code=")) &&
+						!bytes.Contains((tags), []byte("http.status_code=200"))) {
+					wrongTraceSet.Add(util.Bytes2str(traceId))
+				}
+			}
+		}
+
+		if lineCount%BatchSizePerGo == 0 {
+
+		repeat:
+			if BatchTraceList[pos].TraceMapSlice[lineChansIndex] == nil {
+				BatchTraceList[pos].TraceMapSlice[lineChansIndex] = traceMap
+				traceMap = make(util.TraceMap)
+			} else { //不为空，说明尚未被消费，需要等待
+				time.Sleep(10 * time.Millisecond)
+				goto repeat
+			}
+
+			pos = (pos + 1) % util.KBatchCount
+			batchPos := lineCount/BatchSizePerGo - 1
+			go updateWrongTraceId(wrongTraceSet, batchPos)
+
+			wrongTraceSet = mapset.NewSet() //不是用 wrongTraceSet.Clear()
+		}
+	}
+
+repeat1:
+	if BatchTraceList[pos].TraceMapSlice[lineChansIndex] == nil {
+		BatchTraceList[pos].TraceMapSlice[lineChansIndex] = traceMap
+		traceMap = make(util.TraceMap)
+	} else { //不为空，说明尚未被消费，需要等待
+		time.Sleep(10 * time.Millisecond)
+		goto repeat1
+	}
+
+	batchPos := lineCount / BatchSizePerGo
+	updateWrongTraceId(wrongTraceSet, batchPos)
+	LineProcessWg.Done()
 }
 
 func ProcessTraceData() {
@@ -116,16 +211,16 @@ func ProcessTraceData() {
 
 	const chunkSize int = 1 * 1024 * 1024
 	const downloadGoCount int = 1
-	const bufferCount int = 1000
+	const bufferCount int = 100
 	//begin := time.Now()
 
 	downLoadChans := make([]chan *bytes.Buffer, downloadGoCount)
-	for i := 0; i < len(downLoadChans); i++ {
+	for i := 0; i < downloadGoCount; i++ {
 		downLoadChans[i] = make(chan *bytes.Buffer, bufferCount)
 	}
 
 	getBufferChans := make([]chan *bytes.Buffer, downloadGoCount)
-	for i := 0; i < len(getBufferChans); i++ {
+	for i := 0; i < downloadGoCount; i++ {
 		getBufferChans[i] = make(chan *bytes.Buffer, bufferCount)
 		for j := 0; j < bufferCount; j++ {
 			buffer := bytes.NewBuffer(nil)
@@ -154,81 +249,14 @@ func ProcessTraceData() {
 					break
 				}
 
-				//fmt.Println("index: ", index, req.Header, resp.Header, resp.ContentLength, "\n\n")
 				buffer.Reset()
 				io.Copy(buffer, resp.Body)
-				//_, err = buffer.ReadFrom(resp.Body)
-				//if  err != nil {
-				//	log.Println(err)
-				//	panic("buffer.ReadFrom(resp.Body) error")
-				//}
-				//count.Add(n)
 				downLoadChans[index] <- buffer
 			}
 		}(i)
 	}
 
 	var lineCount int = 0
-	var pos int = 0 //BatchTraceList 中正在操作的 index
-	wrongTraceSet := mapset.NewSet()
-	traceMap := make(util.TraceMap)
-
-	dealLine := func(line []byte) {
-		if len(line) == 0 {
-			return
-		}
-		//maxLen = int(math.Max(float64(len(line)), float64(maxLen)))
-		lineCount++
-
-		//获得 traceId
-		firstIndex := strings.Index(string(line), "|")
-		if firstIndex == -1 {
-			return
-		}
-		traceId := line[:firstIndex]
-
-		//获得 tags
-		lastIndex := strings.LastIndex(string(line), "|")
-		if lastIndex == -1 {
-			return
-		}
-		tags := line[lastIndex : len(line)-1]
-
-		if len(tags) > 0 {
-			if _, ok := traceMap[util.TraceId(traceId)]; ok == false {
-				traceMap[util.TraceId(traceId)] = make(util.SpanSlice, 0, 1024)
-			}
-
-			traceMap[util.TraceId(traceId)] = append(traceMap[util.TraceId(traceId)], line)
-
-			if len(tags) > 8 {
-				if bytes.Contains((tags), []byte("error=1")) ||
-					(bytes.Contains((tags), []byte("http.status_code=")) &&
-						!bytes.Contains((tags), []byte("http.status_code=200"))) {
-					wrongTraceSet.Add(util.TraceId(traceId))
-				}
-			}
-		}
-
-		if lineCount%util.KBatchSize == 0 {
-
-			batchPos := lineCount/util.KBatchSize - 1
-
-		repeat:
-			if BatchTraceList[pos].TraceMap == nil {
-				BatchTraceList[pos].TraceMap = traceMap
-				traceMap = make(util.TraceMap)
-			} else { //不为空，说明尚未被消费，需要等待
-				time.Sleep(10 * time.Millisecond)
-				goto repeat
-			}
-
-			pos = (pos + 1) % util.KBatchCount
-			go updateWrongTraceId(wrongTraceSet, batchPos)
-			wrongTraceSet = mapset.NewSet() //不是用 wrongTraceSet.Clear()
-		}
-	}
-
 	index := 0
 	var remaindSlice []byte
 	for true {
@@ -245,8 +273,9 @@ func ProcessTraceData() {
 			}
 
 			line = append(remaindSlice, line...)
-			//this is the new line
-			dealLine(line)
+
+			lineCount++
+			LineChans[lineCount%util.KClientConcurrentNum] <- line
 		}
 
 		for true {
@@ -255,42 +284,28 @@ func ProcessTraceData() {
 				remaindSlice = line
 				break
 			}
-			//this is the new line
-			//fmt.Printf("line : %s\n", line)
-			dealLine(line)
+
+			lineCount++
+			LineChans[lineCount%util.KClientConcurrentNum] <- line
 		}
 
 		getBufferChans[index%downloadGoCount] <- buffer
 		index++
 	}
 
-	//log.Printf("%v\n", time.Since(begin))
-	//log.Println("maxLen =", maxLen)
-
-	//if wrongTraceSet.Cardinality() > 0 {
-	batchPos := lineCount / util.KBatchSize
-repeat2:
-	if BatchTraceList[pos].TraceMap == nil {
-		BatchTraceList[pos].TraceMap = traceMap
-	} else { //不为空，说明尚未被消费，需要等待
-		time.Sleep(100 * time.Millisecond)
-		goto repeat2
+	for i := 0; i < util.KClientConcurrentNum; i++ {
+		close(LineChans[i])
 	}
 
-	//log.Printf("%d  %s\n", batchPos, traceMap["14fd002645313053"])
-	updateWrongTraceId(wrongTraceSet, batchPos)
-	//}
-
+	LineProcessWg.Wait()
 	notifyFinish()
-
-	//os.Exit(0)
 }
 
 //向 backendprocess 更新错误的 traceId
 func updateWrongTraceId(wrongTraceSet mapset.Set, batchPos int) {
-	traceIds := make([]util.TraceId, 0, 1024)
+	traceIds := make([]string, 0, 1024)
 	for tmp := range wrongTraceSet.Iter() {
-		traceIds = append(traceIds, tmp.(util.TraceId))
+		traceIds = append(traceIds, tmp.(string))
 	}
 
 	ss := proto.TraceIds{traceIds}
@@ -305,8 +320,6 @@ func updateWrongTraceId(wrongTraceSet mapset.Set, batchPos int) {
 	data.Add("traceIdListJson", string(jsonStr))
 	data.Add("batchPos", strconv.Itoa(batchPos))
 	resp, err := http.PostForm("http://localhost:8002/setWrongTraceId", data)
-	//req, _ := http.NewRequest("POST", "http://localhost:8002/setWrongTraceId", strings.NewReader(data.Encode()))
-	//resp, _ := util.CallHTTP(req)
 	if err == nil {
 		ioutil.ReadAll(resp.Body)
 		defer resp.Body.Close()

@@ -44,7 +44,7 @@ func easyjson22b38c74DecodeTailBasedSamplingSrcProto(in *jlexer.Lexer, out *Trac
 				in.Delim('{')
 				out.Traces = make(util.TraceMap)
 				for !in.IsDelim('}') {
-					key := util.TraceId(in.String())
+					key := string(in.String())
 					in.WantColon()
 					var v1 util.SpanSlice
 					if in.IsNull() {
@@ -178,16 +178,16 @@ func easyjson22b38c74DecodeTailBasedSamplingSrcProto1(in *jlexer.Lexer, out *Tra
 				in.Delim('[')
 				if out.TraceIds == nil {
 					if !in.IsDelim(']') {
-						out.TraceIds = make([]util.TraceId, 0, 4)
+						out.TraceIds = make([]string, 0, 4)
 					} else {
-						out.TraceIds = []util.TraceId{}
+						out.TraceIds = []string{}
 					}
 				} else {
 					out.TraceIds = (out.TraceIds)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v9 util.TraceId
-					v9 = util.TraceId(in.String())
+					var v9 string
+					v9 = string(in.String())
 					out.TraceIds = append(out.TraceIds, v9)
 					in.WantComma()
 				}

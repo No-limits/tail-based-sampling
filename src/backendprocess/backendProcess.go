@@ -23,17 +23,22 @@ import (
 type TraceIdBatch struct {
 	TraceIdSet   mapset.Set
 	BatchPos     int
-	ProcessCount int
+	ProcessCount atomic.Int32
 }
 
 //TODO 该 slice 会不会有多线程问题
 var TraceIdBatchSlice []TraceIdBatch
 var FinishBatchChan chan int
-
+var RecNumPerBatch int32 //每个Batch需要收到的 setTraceIds 请求的数量
 func init() {
 	TraceIdBatchSlice = make([]TraceIdBatch, util.KBatchCount)
 	FinishBatchChan = make(chan int, util.KBatchCount)
+	RecNumPerBatch = int32(util.KProcessCount * util.KClientConcurrentNum)
 }
+
+var allTraceId mapset.Set
+var allTraceMu sync.Mutex
+var bigMu sync.Mutex
 
 func SetWrongTraceId(c *gin.Context) {
 	//log.Println("dasdasddasd")
@@ -49,6 +54,9 @@ func SetWrongTraceId(c *gin.Context) {
 	wrongeTraceSet := mapset.NewSet()
 	for _, traceId := range ss.TraceIds {
 		wrongeTraceSet.Add(traceId)
+		allTraceMu.Lock()
+		allTraceId.Add(traceId)
+		allTraceMu.Unlock()
 	}
 
 	//json.Unmarshal([]byte(jsonStr), &wrongeTraceSet)
@@ -58,14 +66,17 @@ func SetWrongTraceId(c *gin.Context) {
 		log.Fatalln("ERROR overwrite traceId batch when call setWrongTraceId",
 			"  TraceIdBatchSlice[pos].BatchPos: ", TraceIdBatchSlice[pos].BatchPos, "batchPos: ", batchPos)
 	}
-
+	//6f19e284fb2b4c6a
+	bigMu.Lock()
 	TraceIdBatchSlice[pos].BatchPos = batchPos
-	TraceIdBatchSlice[pos].ProcessCount++
+	TraceIdBatchSlice[pos].ProcessCount.Inc()
 	if TraceIdBatchSlice[pos].TraceIdSet == nil {
 		TraceIdBatchSlice[pos].TraceIdSet = wrongeTraceSet
 	} else if wrongeTraceSet.Cardinality() > 0 {
 		TraceIdBatchSlice[pos].TraceIdSet = TraceIdBatchSlice[pos].TraceIdSet.Union(wrongeTraceSet)
 	}
+
+	bigMu.Unlock()
 	c.String(http.StatusOK, "suc")
 }
 
@@ -79,9 +90,11 @@ func Finish(c *gin.Context) {
 //保存最后计算的 md5 结果
 var traceMd5Map = make(map[string]string)
 var mutex sync.Mutex
+var ssss atomic.Int32 //用于记录wrongTraceId的总数量
 
 func Process() {
-
+	ssss.Store(0)
+	allTraceId = mapset.NewSet()
 	var ports []string
 	ports = append(ports, util.KClientProcessPort1)
 	ports = append(ports, util.KClientProcessPort2)
@@ -114,7 +127,7 @@ func Process() {
 				break
 			}
 
-			time.Sleep(1 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 			continue
 		}
 
@@ -137,6 +150,7 @@ func Process() {
 				}(clientPort)
 			}
 
+			ssss.Add(int32(traceIdBatch.TraceIdSet.Cardinality()))
 			traceMap1 := <-ch
 			traceMap2 := <-ch
 			traceIdSet := mapset.NewSet()
@@ -149,8 +163,8 @@ func Process() {
 
 			for id := range traceIdSet.Iter() {
 				spanSlice := spanSlicePool.Get().(util.SpanSlice)
-				spanSlice = append(spanSlice, traceMap1[util.TraceId(id.(string))]...)
-				spanSlice = append(spanSlice, traceMap2[util.TraceId(id.(string))]...)
+				spanSlice = append(spanSlice, traceMap1[id.(string)]...)
+				spanSlice = append(spanSlice, traceMap2[id.(string)]...)
 				sort.Sort(spanSlice)
 
 				md5Hash.Reset()
@@ -178,6 +192,8 @@ func Process() {
 	for _, clientPort := range ports {
 		exitClient(clientPort)
 	}
+	//log.Println("error trace num: ", ssss.Load())
+	//log.Println("alltrace  num: ", allTraceId.Cardinality())
 	os.Exit(0)
 }
 
@@ -205,8 +221,12 @@ func getFinishedBatch() (TraceIdBatch, bool) {
 	nextBatch := TraceIdBatchSlice[next]
 
 	if (int(FinishProcessCount.Load()) >= util.KProcessCount && currentBatch.BatchPos > 0) ||
-		(currentBatch.ProcessCount >= util.KProcessCount && nextBatch.ProcessCount >= util.KProcessCount) {
+		(currentBatch.ProcessCount.Load() >= RecNumPerBatch && nextBatch.ProcessCount.Load() >= RecNumPerBatch) {
+
+		bigMu.Lock()
 		TraceIdBatchSlice[finishIndex] = TraceIdBatch{}
+
+		bigMu.Unlock()
 		finishIndex = next
 		return currentBatch, true
 	}
@@ -250,9 +270,9 @@ func sendMd5Result() bool {
 
 func getWrongTrace(traceIdSet mapset.Set, batchPos int, clientPort string) util.TraceMap {
 	var traceIds proto.TraceIds
-	traceIds.TraceIds = make([]util.TraceId, 0, 512)
+	traceIds.TraceIds = make([]string, 0, 512)
 	for traceId := range traceIdSet.Iter() {
-		traceIds.TraceIds = append(traceIds.TraceIds, traceId.(util.TraceId))
+		traceIds.TraceIds = append(traceIds.TraceIds, traceId.(string))
 	}
 	//traceIdList, _ := json.Marshal(traceIdSet)
 	traceIdList, _ := traceIds.MarshalJSON()
